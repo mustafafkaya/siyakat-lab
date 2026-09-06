@@ -8,7 +8,7 @@
  * Koordinatlar normalize olduğu için görsel ölçeğinden bağımsızdır — backend'e
  * {x, y, width, height} olarak gider (schemas/sample.py: Coordinates ile uyumlu).
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type CropRect = { x: number; y: number; width: number; height: number };
 
@@ -27,6 +27,20 @@ export default function CropTool({
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const [rect, setRect] = useState<CropRect | null>(null);
   const [drawing, setDrawing] = useState(false);
+  // Kutunun en-boy oranı görselin DOĞAL oranına eşitlenir. Aksi hâlde
+  // object-contain letterbox bırakır ve koordinatlar görsele göre kayar
+  // (E1 adım 4'te gerçek kırpma yapıldığı için bu kritik).
+  const [ratio, setRatio] = useState<number | null>(null);
+
+  // Yeni görsel seçilince eski seçim geçersizdir.
+  useEffect(() => {
+    setRect(null);
+    setRatio(null);
+    startRef.current = null;
+    onChange?.(null);
+    // onChange kimliği her render değişebildiği için bağımlılığa alınmaz.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageSrc]);
 
   function relPos(clientX: number, clientY: number) {
     const b = boxRef.current!.getBoundingClientRect();
@@ -79,11 +93,20 @@ export default function CropTool({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         className="relative w-full select-none cursor-crosshair rounded border border-stone-300 overflow-hidden touch-none"
-        style={{ aspectRatio: "3 / 2", background: "#f5f5f4" }}
+        style={{ aspectRatio: ratio ? String(ratio) : "3 / 2", background: "#f5f5f4" }}
       >
         {imageSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageSrc} alt="Belge" draggable={false} className="pointer-events-none w-full h-full object-contain" />
+          <img
+            src={imageSrc}
+            alt="Belge"
+            draggable={false}
+            onLoad={(e) => {
+              const el = e.currentTarget;
+              if (el.naturalWidth && el.naturalHeight) setRatio(el.naturalWidth / el.naturalHeight);
+            }}
+            className="pointer-events-none w-full h-full object-contain"
+          />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-stone-400">
             Belge görseli — üzerinde fareyle rakam alanı seçin

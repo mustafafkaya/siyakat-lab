@@ -14,6 +14,7 @@ class VerificationHistoryOut(BaseModel):
     id: uuid.UUID
     sample_id: uuid.UUID
     changed_by: Optional[uuid.UUID]
+    changed_by_name: Optional[str] = None
     field_changed: Optional[str]
     old_value: Optional[str]
     new_value: Optional[str]

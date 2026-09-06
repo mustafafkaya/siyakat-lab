@@ -2,10 +2,10 @@
  * F12 · Doğrulama / değişiklik geçmişi görünümü (audit timeline).
  *
  * Backend B11 (verification_history) tablosunun frontend karşılığı: kim / ne / ne zaman / not.
- * Server component (hook yok) — örnek detay sayfasında doğrudan render edilir.
- * E1'de veriyi GET /verification/{id}/history sağlayacak.
+ * Sunum bileşeni (hook yok) — örnek detay sayfasında render edilir.
+ * E1: veri GET /verification/{id}/history ucundan gelir.
  */
-import { statusLabels, type HistoryEntry } from "@/lib/dummyData";
+import { statusLabels, type HistoryEntry } from "@/lib/labels";
 
 function fmt(iso: string) {
   return new Date(iso).toLocaleString("tr-TR", {
@@ -33,6 +33,13 @@ const fieldLabels: Record<string, string> = {
   expert_note: "Uzman Notu",
 };
 
+/** E1 adım 5: backend `changedByName` döndürür; yoksa kısaltılmış id'ye düşülür. */
+function who(e: HistoryEntry): string {
+  if (e.changedByName) return e.changedByName;
+  if (e.changedBy) return `Kullanıcı #${String(e.changedBy).slice(0, 8)}`;
+  return "—";
+}
+
 export default function VerificationHistory({ entries }: { entries: HistoryEntry[] }) {
   if (!entries || entries.length === 0) {
     return <p className="text-sm text-stone-400">Bu örnek için henüz geçmiş kaydı yok.</p>;
@@ -48,7 +55,7 @@ export default function VerificationHistory({ entries }: { entries: HistoryEntry
           <span className="absolute -left-1.5 w-3 h-3 rounded-full bg-amber-400 border border-white" />
           <div className="text-xs text-stone-400">{fmt(e.createdAt)}</div>
           <div className="text-sm">
-            <span className="font-medium">{e.changedBy}</span>{" "}
+            <span className="font-medium">{who(e)}</span>{" "}
             <span className="text-stone-500">
               — {fieldLabels[e.fieldChanged] ?? e.fieldChanged}
             </span>

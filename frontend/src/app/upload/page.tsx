@@ -1,14 +1,20 @@
 "use client";
 
 /**
- * F8 · Veri ekleme akışı: yükle → görüntüle → kırp → gir → kaydet.
+ * F8 · Veri ekleme akışı: yükle → kırp → bilgileri gir → kaydet.
  *
- * Yol haritası D maddesindeki iş akışının frontend karşılığı. Şu an dummy:
- * "Kaydet" gerçek API'ye gitmez; E1'de (Faz 4) POST /documents + POST /samples
- * çağrılarına bağlanacak. Adım yapısı ve toplanan alanlar backend sözleşmesiyle birebir.
+ * E1 adım 4: GERÇEK API'ye bağlı.
+ *   1) POST /documents  (multipart: belge görseli + metadata) → document_id
+ *   2) POST /samples    (multipart: document_id + kırpılmış görsel + koordinat + okuma)
+ * Her iki uç da token ister; giriş yapılmamışsa kaydetme kapalıdır.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import CropTool, { CropRect } from "@/components/CropTool";
+import StatusBadge from "@/components/StatusBadge";
+import { useAuth } from "@/lib/auth";
+import { ApiError, createDocument, createSample, assetUrl, Sample } from "@/lib/api";
+import { cropToBlob, cropFileName } from "@/lib/cropImage";
 
 type Meta = {
   archiveRef: string;
@@ -33,47 +39,112 @@ const emptyMeta: Meta = {
 const steps = ["Belge Yükle", "Alan Seç (Kırp)", "Bilgileri Gir", "Kaydet"];
 
 export default function UploadPage() {
+  const { user, loading: authLoading } = useAuth();
+
   const [step, setStep] = useState(0);
+  const [file, setFile] = useState<File | null>(null);
   const [imageSrc, setImageSrc] = useState<string | undefined>();
-  const [fileName, setFileName] = useState<string>("");
   const [crop, setCrop] = useState<CropRect | null>(null);
   const [meta, setMeta] = useState<Meta>(emptyMeta);
-  const [saved, setSaved] = useState(false);
+
+  const [preview, setPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<Sample | null>(null);
+  const previewRef = useRef<string | null>(null);
 
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
-    setFileName(f.name);
+    setFile(f);
+    setCrop(null);
+    setError(null);
     const reader = new FileReader();
     reader.onload = () => setImageSrc(reader.result as string);
     reader.readAsDataURL(f);
   }
 
+  // Özet adımında kırpılan alanın önizlemesini üret (kaydetmeden önce göz kontrolü).
+  useEffect(() => {
+    let active = true;
+    function clear() {
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+      previewRef.current = null;
+    }
+    if (step !== 3 || !imageSrc || !crop || saved) {
+      clear();
+      setPreview(null);
+      return;
+    }
+    cropToBlob(imageSrc, crop)
+      .then((blob) => {
+        if (!active) return;
+        clear();
+        const url = URL.createObjectURL(blob);
+        previewRef.current = url;
+        setPreview(url);
+      })
+      .catch(() => active && setPreview(null));
+    return () => {
+      active = false;
+    };
+  }, [step, imageSrc, crop, saved]);
+
+  useEffect(() => () => {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+  }, []);
+
   function reset() {
     setStep(0);
+    setFile(null);
     setImageSrc(undefined);
-    setFileName("");
     setCrop(null);
     setMeta(emptyMeta);
-    setSaved(false);
+    setSaved(null);
+    setError(null);
+    setPreview(null);
   }
 
-  const payload = {
-    document: {
-      archive_ref: meta.archiveRef,
-      region: meta.region,
-      century: meta.century,
-      document_type: meta.documentType,
-      image: fileName,
-    },
-    sample: {
-      coordinates: crop,
-      read_value: meta.readValue,
-      variant_type: meta.variantType,
-      expert_note: meta.expertNote,
-      verification_status: "draft",
-    },
-  };
+  async function handleSave() {
+    if (!file || !imageSrc || !crop) return;
+    setSaving(true);
+    setError(null);
+    try {
+      // 1) Belge
+      const doc = await createDocument(file, {
+        archiveRef: meta.archiveRef,
+        region: meta.region,
+        century: meta.century,
+        documentType: meta.documentType,
+      });
+      // 2) Kırpılan alan → örnek
+      const blob = await cropToBlob(imageSrc, crop);
+      const sample = await createSample(
+        {
+          documentId: doc.id,
+          croppedImage: blob,
+          coordinates: crop,
+          readValue: meta.readValue,
+          variantType: meta.variantType,
+          expertNote: meta.expertNote,
+        },
+        cropFileName(file.name)
+      );
+      setSaved(sample);
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? err.status === 401
+            ? "Oturum süresi dolmuş görünüyor. Yeniden giriş yapın."
+            : err.message
+          : err instanceof Error
+          ? err.message
+          : "Kayıt sırasında beklenmeyen bir hata oluştu.";
+      setError(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="max-w-2xl">
@@ -81,6 +152,15 @@ export default function UploadPage() {
       <p className="text-sm text-stone-500 mb-6">
         Belge yükleyin, rakam alanını seçin, bilgileri girin ve taslak olarak kaydedin.
       </p>
+
+      {!authLoading && !user && (
+        <div className="mb-6 p-3 rounded bg-amber-50 border border-amber-200 text-sm text-amber-900">
+          Veri eklemek için giriş yapmalısınız.{" "}
+          <Link href="/login" className="underline font-medium">
+            Giriş yap
+          </Link>
+        </div>
+      )}
 
       {/* Adım göstergesi */}
       <ol className="flex items-center gap-2 mb-6 text-xs">
@@ -105,7 +185,7 @@ export default function UploadPage() {
           <label className="block border-2 border-dashed border-stone-300 rounded p-8 text-center cursor-pointer hover:border-amber-400">
             <input type="file" accept="image/*" onChange={onFile} className="hidden" />
             <span className="text-sm text-stone-500">
-              {fileName ? `Seçildi: ${fileName}` : "Belge görselini seçmek için tıklayın"}
+              {file ? `Seçildi: ${file.name}` : "Belge görselini seçmek için tıklayın"}
             </span>
           </label>
           {imageSrc && (
@@ -177,34 +257,90 @@ export default function UploadPage() {
       {step === 3 && (
         <div className="space-y-4">
           {saved ? (
-            <div className="p-4 rounded bg-green-50 border border-green-200 text-sm text-green-800">
-              Örnek <b>taslak</b> olarak kaydedildi. (Dummy — E1'de gerçek API'ye yazılacak.)
-              Uzman panelinde inceleme sırasına eklenecek.
+            <div className="space-y-4">
+              <div className="p-4 rounded bg-green-50 border border-green-200 text-sm text-green-800">
+                Örnek kaydedildi. Uzman panelinde inceleme sırasına eklendi.
+              </div>
+              <div className="flex items-start gap-4 border border-stone-200 rounded p-3">
+                {assetUrl(saved.croppedImageUrl) && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={assetUrl(saved.croppedImageUrl) as string}
+                    alt="kaydedilen örnek"
+                    className="h-20 rounded border border-stone-200 bg-stone-50"
+                  />
+                )}
+                <div className="text-sm space-y-1">
+                  <div className="font-medium">{saved.readValue || "— okuma girilmedi —"}</div>
+                  <StatusBadge status={saved.verificationStatus} />
+                  <div className="text-xs text-stone-500">ID: {saved.id}</div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Link
+                  href={`/samples/${saved.id}`}
+                  className="px-4 py-2 rounded bg-stone-100 text-sm hover:bg-stone-200"
+                >
+                  Örneği aç
+                </Link>
+                <Link href="/atlas" className="px-4 py-2 rounded bg-stone-100 text-sm hover:bg-stone-200">
+                  Atlas'a git
+                </Link>
+                <button onClick={reset} className="px-4 py-2 rounded bg-amber-500 text-white text-sm ml-auto">
+                  Yeni Örnek Ekle
+                </button>
+              </div>
             </div>
           ) : (
             <>
-              <p className="text-sm text-stone-500">Kaydedilecek veri (backend'e gidecek yük):</p>
-              <pre className="text-xs bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto">
-                {JSON.stringify(payload, null, 2)}
-              </pre>
-            </>
-          )}
-          <div className="flex justify-between">
-            {!saved ? (
-              <>
-                <button onClick={() => setStep(2)} className="px-4 py-2 rounded bg-stone-100 text-sm">
+              <div className="border border-stone-200 rounded p-3 space-y-3">
+                <p className="text-sm text-stone-500">Kaydedilecek örnek:</p>
+                <div className="flex items-start gap-4">
+                  {preview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={preview}
+                      alt="kırpılan alan"
+                      className="h-20 rounded border border-stone-200 bg-stone-50"
+                    />
+                  ) : (
+                    <div className="h-20 w-28 rounded border border-dashed border-stone-300 text-[11px] text-stone-400 flex items-center justify-center">
+                      önizleme
+                    </div>
+                  )}
+                  <dl className="text-sm grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                    <Row label="Belge" value={file?.name} />
+                    <Row label="Okunan değer" value={meta.readValue} />
+                    <Row label="Varyant" value={meta.variantType} />
+                    <Row label="Arşiv" value={meta.archiveRef} />
+                    <Row label="Bölge / Dönem" value={[meta.region, meta.century].filter(Boolean).join(" · ")} />
+                    <Row label="Belge türü" value={meta.documentType} />
+                  </dl>
+                </div>
+              </div>
+
+              {error && (
+                <div className="p-3 rounded bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
+              )}
+
+              <div className="flex justify-between">
+                <button
+                  onClick={() => setStep(2)}
+                  disabled={saving}
+                  className="px-4 py-2 rounded bg-stone-100 text-sm disabled:opacity-40"
+                >
                   Geri
                 </button>
-                <button onClick={() => setSaved(true)} className="px-4 py-2 rounded bg-green-600 text-white text-sm">
-                  Kaydet (Taslak)
+                <button
+                  onClick={handleSave}
+                  disabled={saving || !user || !file || !crop}
+                  className="px-4 py-2 rounded bg-green-600 text-white text-sm disabled:opacity-40"
+                >
+                  {saving ? "Kaydediliyor…" : "Kaydet (Taslak)"}
                 </button>
-              </>
-            ) : (
-              <button onClick={reset} className="px-4 py-2 rounded bg-amber-500 text-white text-sm ml-auto">
-                Yeni Örnek Ekle
-              </button>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -217,5 +353,14 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
       <label className="block text-stone-500 mb-1">{label}</label>
       <input value={value} onChange={(e) => onChange(e.target.value)} className="w-full border border-stone-300 rounded p-2" />
     </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <>
+      <dt className="text-stone-500">{label}</dt>
+      <dd className={value ? "" : "text-stone-400"}>{value || "—"}</dd>
+    </>
   );
 }

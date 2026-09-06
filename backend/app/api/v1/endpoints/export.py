@@ -12,12 +12,12 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.models.sample import SiyakatSample, VerificationStatus
 from app.models.document import Document
+from app.services.sample_query import apply_sample_filters
 
 router = APIRouter(prefix="/export", tags=["export"])
 
@@ -42,18 +42,20 @@ EXPORT_FIELDS = [
 
 
 def _filtered_query(db: Session, region, century, document_type, verification_status, query):
-    q = db.query(SiyakatSample).join(Document, SiyakatSample.document_id == Document.id)
-    if region:
-        q = q.filter(Document.region == region)
-    if century:
-        q = q.filter(Document.century == century)
-    if document_type:
-        q = q.filter(Document.document_type == document_type)
-    if verification_status:
-        q = q.filter(SiyakatSample.verification_status == verification_status)
-    if query:
-        like = f"%{query}%"
-        q = q.filter(or_(SiyakatSample.read_value.ilike(like), SiyakatSample.expert_note.ilike(like)))
+    """Arama ekranıyla AYNI filtre mantığı (app/services/sample_query.py)."""
+    q = (
+        db.query(SiyakatSample)
+        .join(Document, SiyakatSample.document_id == Document.id)
+        .options(joinedload(SiyakatSample.document))
+    )
+    q = apply_sample_filters(
+        q,
+        region=region,
+        century=century,
+        document_type=document_type,
+        verification_status=verification_status,
+        query=query,
+    )
     return q.order_by(SiyakatSample.created_at.desc())
 
 

@@ -1,5 +1,6 @@
 "use client";
 import { useAuth } from "@/lib/auth";
+import { canReview } from "@/lib/labels";
 
 export default function NavBar() {
   const { user, logout, loading } = useAuth();
@@ -10,7 +11,7 @@ export default function NavBar() {
       <a href="/search">Ara</a>
       <a href="/compare">Karşılaştır</a>
       <a href="/upload">Ekle</a>
-      <a href="/admin">Uzman Paneli</a>
+      {canReview(user?.role) && <a href="/admin">Uzman Paneli</a>}
       {!loading && user ? (
         <span className="ml-auto flex items-center gap-3">
           <span className="text-stone-500">

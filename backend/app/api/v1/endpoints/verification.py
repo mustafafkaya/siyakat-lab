@@ -44,9 +44,20 @@ def decide(
 
 @router.get("/{sample_id}/history", response_model=list[VerificationHistoryOut])
 def get_history(sample_id: str, db: Session = Depends(get_db)):
-    return (
-        db.query(VerificationHistory)
+    """
+    Değişiklik/doğrulama geçmişi. `changed_by` UUID'sinin yanında kullanıcının
+    görünen adı (`changed_by_name`) da döner; frontend UUID göstermek zorunda kalmaz.
+    """
+    rows = (
+        db.query(VerificationHistory, User)
+        .outerjoin(User, VerificationHistory.changed_by == User.id)
         .filter(VerificationHistory.sample_id == sample_id)
         .order_by(VerificationHistory.created_at.desc())
         .all()
     )
+    out: list[VerificationHistoryOut] = []
+    for history, user in rows:
+        item = VerificationHistoryOut.model_validate(history)
+        item.changed_by_name = (user.full_name or user.email) if user else None
+        out.append(item)
+    return out

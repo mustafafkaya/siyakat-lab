@@ -1,46 +1,64 @@
 "use client";
-import { useState } from "react";
-import { dummySamples } from "@/lib/dummyData";
+import Link from "next/link";
+import FilterBar from "@/components/FilterBar";
+import SampleThumb from "@/components/SampleThumb";
+import StatusBadge from "@/components/StatusBadge";
+import { useSamples } from "@/lib/useSamples";
 
 export default function SearchPage() {
-  const [query, setQuery] = useState("");
-  const [region, setRegion] = useState("");
-
-  const results = dummySamples.filter((s) => {
-    const matchesQuery = query ? s.readValue.includes(query) : true;
-    const matchesRegion = region ? s.region === region : true;
-    return matchesQuery && matchesRegion;
-  });
+  const { filters, setFilters, samples, facets, loading, error, reload } = useSamples();
 
   return (
     <div>
-      <h1 className="text-xl font-semibold mb-4">Arama ve Filtreleme</h1>
-      <div className="flex gap-3 mb-6">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Değer ara (örn. 1250)"
-          className="border border-stone-300 rounded px-3 py-2 text-sm flex-1"
-        />
-        <select value={region} onChange={(e) => setRegion(e.target.value)} className="border border-stone-300 rounded px-3 py-2 text-sm">
-          <option value="">Tüm Bölgeler</option>
-          <option value="İstanbul">İstanbul</option>
-          <option value="Bursa">Bursa</option>
-          <option value="Edirne">Edirne</option>
-        </select>
+      <div className="flex items-baseline justify-between mb-4">
+        <h1 className="text-xl font-semibold">Arama ve Filtreleme</h1>
+        {facets && !loading && (
+          <span className="text-xs text-stone-500">{samples.length} sonuç</span>
+        )}
       </div>
-      <div className="space-y-2">
-        {results.map((s) => (
-          <a key={s.id} href={`/samples/${s.id}`} className="flex items-center gap-3 border border-stone-200 rounded p-2 hover:bg-stone-50">
-            <div className={`w-10 h-10 rounded ${s.thumbnailColor}`} />
-            <div className="text-sm">
-              <div className="font-medium">{s.readValue}</div>
-              <div className="text-xs text-stone-500">{s.region} · {s.documentType}</div>
-            </div>
-          </a>
-        ))}
-        {results.length === 0 && <p className="text-sm text-stone-400">Sonuç bulunamadı.</p>}
-      </div>
+
+      <FilterBar facets={facets} filters={filters} onChange={setFilters} showQuery />
+
+      {error && (
+        <div className="border border-red-200 bg-red-50 text-red-700 text-sm rounded p-3 mb-4">
+          {error}{" "}
+          <button onClick={reload} className="underline underline-offset-2">
+            Tekrar dene
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-14 border border-stone-200 rounded animate-pulse bg-stone-50" />
+          ))}
+        </div>
+      ) : samples.length === 0 ? (
+        <p className="text-sm text-stone-400">Sonuç bulunamadı.</p>
+      ) : (
+        <div className="space-y-2">
+          {samples.map((s) => (
+            <Link
+              key={s.id}
+              href={`/samples/${s.id}`}
+              className="flex items-center gap-3 border border-stone-200 rounded p-2 hover:bg-stone-50"
+            >
+              <div className="w-12 shrink-0">
+                <SampleThumb url={s.croppedImageUrl} alt={s.readValue ?? undefined} className="h-12" />
+              </div>
+              <div className="text-sm flex-1 min-w-0">
+                <div className="font-medium truncate">{s.readValue || "— okunmamış —"}</div>
+                <div className="text-xs text-stone-500 truncate">
+                  {[s.region, s.century, s.documentType].filter(Boolean).join(" · ") ||
+                    "belge bilgisi yok"}
+                </div>
+              </div>
+              <StatusBadge status={s.verificationStatus} />
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

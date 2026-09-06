@@ -33,3 +33,18 @@ class UserOut(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class AdminUserCreate(BaseModel):
+    """Admin panelinden kullanıcı oluşturma (rol seçilebilir)."""
+    email: EmailStr
+    full_name: Optional[str] = None
+    password: str
+    role: UserRole = UserRole.USER
+
+
+class UserUpdate(BaseModel):
+    """Admin panelinden güncelleme; yalnızca gönderilen alanlar değişir."""
+    full_name: Optional[str] = None
+    role: Optional[UserRole] = None
+    is_active: Optional[bool] = None
