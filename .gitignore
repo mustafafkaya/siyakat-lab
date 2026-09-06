@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.env
+backend/storage/documents/*
+backend/storage/samples/*
+!backend/storage/documents/.gitkeep
+!backend/storage/samples/.gitkeep
+
+# Node
+node_modules/
+.next/
+frontend/.env.local
+
+# OS
+.DS_Store
+
+# Staging leftovers
+_to_delete/
