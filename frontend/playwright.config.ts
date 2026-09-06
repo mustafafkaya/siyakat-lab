@@ -1,0 +1,34 @@
+import { defineConfig, devices } from "@playwright/test";
+
+/**
+ * D2 · E2E test yapılandırması.
+ *
+ * Ön koşul (CI ve yerel aynı): backend http://127.0.0.1:8000 ayakta ve
+ * `python -m scripts.seed_demo` çalıştırılmış olmalı. Frontend'i Playwright başlatır.
+ */
+export default defineConfig({
+  testDir: "./e2e",
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
+  fullyParallel: false,
+  workers: 1,
+  retries: process.env.CI ? 1 : 0,
+  reporter: [["list"]],
+  use: {
+    baseURL: process.env.E2E_BASE_URL || "http://127.0.0.1:3000",
+    trace: "retain-on-failure",
+    // Hazır Chromium bulunan ortamlarda (sandbox/CI imajı) indirmeyi atlamak için.
+    launchOptions: process.env.E2E_CHROMIUM_PATH
+      ? { executablePath: process.env.E2E_CHROMIUM_PATH }
+      : {},
+  },
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : {
+        command: "npm run start -- -p 3000",
+        url: "http://127.0.0.1:3000",
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      },
+});

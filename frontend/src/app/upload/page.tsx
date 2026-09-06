@@ -183,7 +183,7 @@ export default function UploadPage() {
       {step === 0 && (
         <div className="space-y-4">
           <label className="block border-2 border-dashed border-stone-300 rounded p-8 text-center cursor-pointer hover:border-amber-400">
-            <input type="file" accept="image/*" onChange={onFile} className="hidden" />
+            <input id="f-document-file" type="file" accept="image/*" onChange={onFile} className="hidden" />
             <span className="text-sm text-stone-500">
               {file ? `Seçildi: ${file.name}` : "Belge görselini seçmek için tıklayın"}
             </span>
@@ -227,16 +227,19 @@ export default function UploadPage() {
       {step === 2 && (
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <Field label="Okunan Değer" value={meta.readValue} onChange={(v) => setMeta({ ...meta, readValue: v })} />
-            <Field label="Varyant/Tip" value={meta.variantType} onChange={(v) => setMeta({ ...meta, variantType: v })} />
-            <Field label="Arşiv/Referans" value={meta.archiveRef} onChange={(v) => setMeta({ ...meta, archiveRef: v })} />
-            <Field label="Bölge" value={meta.region} onChange={(v) => setMeta({ ...meta, region: v })} />
-            <Field label="Dönem/Yüzyıl" value={meta.century} onChange={(v) => setMeta({ ...meta, century: v })} />
-            <Field label="Belge Türü" value={meta.documentType} onChange={(v) => setMeta({ ...meta, documentType: v })} />
+            <Field id="f-read-value" label="Okunan Değer" value={meta.readValue} onChange={(v) => setMeta({ ...meta, readValue: v })} />
+            <Field id="f-variant-type" label="Varyant/Tip" value={meta.variantType} onChange={(v) => setMeta({ ...meta, variantType: v })} />
+            <Field id="f-archive-ref" label="Arşiv/Referans" value={meta.archiveRef} onChange={(v) => setMeta({ ...meta, archiveRef: v })} />
+            <Field id="f-region" label="Bölge" value={meta.region} onChange={(v) => setMeta({ ...meta, region: v })} />
+            <Field id="f-century" label="Dönem/Yüzyıl" value={meta.century} onChange={(v) => setMeta({ ...meta, century: v })} />
+            <Field id="f-document-type" label="Belge Türü" value={meta.documentType} onChange={(v) => setMeta({ ...meta, documentType: v })} />
           </div>
           <div className="text-sm">
-            <label className="block text-stone-500 mb-1">Uzman Notu</label>
+            <label htmlFor="f-expert-note" className="block text-stone-500 mb-1">
+              Uzman Notu
+            </label>
             <textarea
+              id="f-expert-note"
               value={meta.expertNote}
               onChange={(e) => setMeta({ ...meta, expertNote: e.target.value })}
               className="w-full border border-stone-300 rounded p-2 h-20"
@@ -347,11 +350,28 @@ export default function UploadPage() {
   );
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function Field({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <div>
-      <label className="block text-stone-500 mb-1">{label}</label>
-      <input value={value} onChange={(e) => onChange(e.target.value)} className="w-full border border-stone-300 rounded p-2" />
+      <label htmlFor={id} className="block text-stone-500 mb-1">
+        {label}
+      </label>
+      <input
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full border border-stone-300 rounded p-2"
+      />
     </div>
   );
 }

@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import SampleThumb from "@/components/SampleThumb";
 import StatusBadge from "@/components/StatusBadge";
 import VerificationHistory from "@/components/VerificationHistory";
-import { getSample, getSampleHistory, type Sample } from "@/lib/api";
+import { getSample, getSampleHistory, updateSample, type Sample } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import type { HistoryEntry } from "@/lib/labels";
 
 export default function SampleDetailPage({ params }: { params: { id: string } }) {
@@ -12,6 +13,9 @@ export default function SampleDetailPage({ params }: { params: { id: string } })
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -43,6 +47,21 @@ export default function SampleDetailPage({ params }: { params: { id: string } })
       </div>
     );
 
+  /** E2: taslak örneği sahibi/giriş yapmış kullanıcı incelemeye gönderebilir (draft → pending_review). */
+  async function submitForReview() {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const updated = await updateSample(sample!.id, { verificationStatus: "pending_review" });
+      setSample(updated);
+      setHistory(await getSampleHistory(updated.id).catch(() => history));
+    } catch (e: any) {
+      setSubmitError(e?.message || "Gönderilemedi.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const field = (label: string, value: string | null | undefined) => (
     <>
       <dt className="text-stone-500">{label}</dt>
@@ -68,6 +87,19 @@ export default function SampleDetailPage({ params }: { params: { id: string } })
           <StatusBadge status={sample.verificationStatus} />
         </dd>
       </dl>
+
+      {user && sample.verificationStatus === "draft" && (
+        <div className="mt-4">
+          <button
+            onClick={submitForReview}
+            disabled={submitting}
+            className="px-4 py-2 rounded bg-amber-500 text-white text-sm disabled:opacity-50"
+          >
+            {submitting ? "Gönderiliyor…" : "İncelemeye Gönder"}
+          </button>
+          {submitError && <p className="text-xs text-red-700 mt-2">{submitError}</p>}
+        </div>
+      )}
 
       {sample.expertNote && (
         <p className="text-sm text-stone-600 mt-4 italic border-l-2 border-stone-200 pl-3">
